@@ -1,8 +1,5 @@
-/* UAKino Lite+ для Siaivo/Lampa
-   - кнопка UAKino на картці (фільм / серіал)
-   - пункт UAKino у бічному меню
-   - тема + логотип
-   - CUB/TMDB і меню Lampa не ламаємо
+/* UAKino Lite+ для Lampa/Siaivo
+   Балансер → якість, серіали, меню, тема, лого
 */
 (function () {
   'use strict';
@@ -212,6 +209,44 @@
     Lampa.Player.playlist([item]);
   }
 
+  function chooseBalancer(movie, f, p, vars, season, episode) {
+    var voices = p.voices || [];
+    if (voices.length <= 1) {
+      return chooseQuality(movie, f, p, vars, season, episode, voices[0] || null);
+    }
+    var items = voices.map(function (v, i) {
+      return {
+        title: v,
+        subtitle: 'балансер UAKino',
+        voice: v,
+        selected: i === 0,
+        template: 'selectbox_icon',
+        icon: MIC
+      };
+    });
+    Lampa.Select.show({
+      title: 'Балансер · UAKino',
+      items: items,
+      onBack: back,
+      onSelect: function (it) {
+        Lampa.Loading.start(function () { Lampa.Loading.stop(); });
+        play(f.movie_id, {
+          voice: it.voice,
+          season: season,
+          episode: episode
+        }).then(function (pp) {
+          return variants(m3u8(pp.manifest_abs || (API + pp.manifest))).then(function (vv) {
+            Lampa.Loading.stop();
+            chooseQuality(movie, f, pp, vv, season, episode, it.voice);
+          });
+        }).catch(function (e) {
+          Lampa.Loading.stop();
+          Lampa.Noty.show('UAKino: ' + (e && e.message || 'помилка'));
+        });
+      }
+    });
+  }
+
   function chooseQuality(movie, f, p, vars, season, episode, voice) {
     var pref = getPrefQ(), avail = {};
     (vars || []).forEach(function (v) { avail[v.t] = true; });
@@ -228,41 +263,12 @@
         icon: qbadge(TIER_BADGE[t], t === 2160), tier: t, selected: pref === t
       });
     });
-    var voices = p.voices || [];
-    if (voices.length > 1) {
-      items.push({
-        title: 'Озвучка: ' + (voice || voices[0] || 'українська'),
-        subtitle: 'змінити', template: 'selectbox_icon', icon: MIC, voiceRow: true
-      });
-    }
     if (items.length === 1) return startPlay(movie, f, p, vars, 0, voice, season, episode);
 
     Lampa.Select.show({
-      title: movie.title || movie.name || 'UAKino',
+      title: (voice ? voice + ' · ' : '') + (movie.title || movie.name || 'Якість'),
       items: items, onBack: back,
       onSelect: function (it) {
-        if (it.voiceRow) {
-          Lampa.Select.show({
-            title: 'Озвучка',
-            items: voices.map(function (v) {
-              return { title: v, voice: v, selected: v === voice, template: 'selectbox_icon', icon: MIC };
-            }),
-            onBack: function () { chooseQuality(movie, f, p, vars, season, episode, voice); },
-            onSelect: function (v) {
-              Lampa.Loading.start(function () { Lampa.Loading.stop(); });
-              play(f.movie_id, { voice: v.voice, season: season, episode: episode }).then(function (pp) {
-                return variants(m3u8(pp.manifest_abs || (API + pp.manifest))).then(function (vv) {
-                  Lampa.Loading.stop();
-                  chooseQuality(movie, f, pp, vv, season, episode, v.voice);
-                });
-              }).catch(function (e) {
-                Lampa.Loading.stop();
-                Lampa.Noty.show('UAKino: ' + (e && e.message || 'помилка'));
-              });
-            }
-          });
-          return;
-        }
         setPrefQ(it.tier);
         startPlay(movie, f, p, vars, it.tier, voice, season, episode);
       }
@@ -328,7 +334,7 @@
     function renderAll(voices, seasons) {
       body.empty();
       body.append('<div class="uak-head">' + (movie.title || movie.name || 'Серіал') + '</div>');
-      body.append('<div class="uak-sub">UAKino · озвучка, сезон, серія</div>');
+      body.append('<div class="uak-sub">UAKino · балансер, сезон, серія</div>');
 
       if (voices && voices.length) {
         var rowV = $('<div class="uak-row"></div>');
@@ -371,7 +377,7 @@
       eps.sort(function (a, b) { return a.episode - b.episode; });
 
       if (!eps.length) {
-        list.append('<div class="uak-sub">Немає серій для цієї озвучки/сезону</div>');
+        list.append('<div class="uak-sub">Немає серій для цього балансера/сезону</div>');
       } else {
         eps.forEach(function (ep) {
           var view = timeline(movie, ep.season, ep.episode);
@@ -443,7 +449,7 @@
       return play(f.movie_id, {}).then(function (p) {
         return variants(m3u8(p.manifest_abs || (API + p.manifest))).then(function (vars) {
           Lampa.Loading.stop();
-          chooseQuality(movie, f, p, vars, null, null, null);
+          chooseBalancer(movie, f, p, vars, null, null);
         });
       });
     }).catch(function (e) {
@@ -477,233 +483,18 @@
     try {
       var render = e.object.activity.render();
       if (render.find('.view--uakino-lite').length) return;
-      var movie = e.data.movie;      Lampa.Select.show({
-            title: 'Озвучка',
-            items: voices.map(function (v) {
-              return { title: v, voice: v, selected: v === voice, template: 'selectbox_icon', icon: MIC };
-            }),
-            onBack: function () { chooseQuality(movie, f, p, vars, season, episode, voice); },
-            onSelect: function (v) {
-              Lampa.Loading.start(function () { Lampa.Loading.stop(); });
-              play(f.movie_id, { voice: v.voice, season: season, episode: episode }).then(function (pp) {
-                return variants(m3u8(pp.manifest_abs || (API + pp.manifest))).then(function (vv) {
-                  Lampa.Loading.stop();
-                  chooseQuality(movie, f, pp, vv, season, episode, v.voice);
-                });
-              }).catch(function (e) {
-                Lampa.Loading.stop();
-                Lampa.Noty.show('UAKino: ' + (e && e.message || 'помилка'));
-              });
-            }
-          });
-          return;
-        }
-        setPrefQ(it.tier);
-        startPlay(movie, f, p, vars, it.tier, voice, season, episode);
-      }
-    });
-  }
-
-  function startPlay(movie, f, p, vars, tier, voice, season, episode) {
-    var meta = { movie: f.movie_id, voice: voice, season: season, episode: episode };
-    var view = timeline(movie, season, episode);
-    var title = movie.title || movie.name || 'UAKino';
-    if (season != null) title += ' S' + season + 'E' + episode;
-    if (tier === 2160 && p.alt4k && hevc()) {
-      Lampa.Loading.start(function () { Lampa.Loading.stop(); });
-      return play(f.movie_id, { voice: voice, season: season, episode: episode, q: '2160' }).then(function (pp) {
-        Lampa.Loading.stop();
-        playItem(filmItem(pp, [], 0, title + ' · 4K', view, meta));
-      }).catch(function (e) {
-        Lampa.Loading.stop();
-        Lampa.Noty.show('UAKino: ' + (e && e.message || '4K недоступно'));
-      });
-    }
-    playItem(filmItem(p, vars, tier, title, view, meta));
-  }
-
-  // ─── сторінка серіалу ───
-  function SeriesPage(object) {
-    var scroll = new Lampa.Scroll({ mask: true, over: true });
-    var body = $('<div class="uak-series"></div>');
-    var movie = object.movie || object.card;
-    var f = object.uak_find;
-    var st = { p: null, voice: null, season: 1 };
-    var self = this;
-
-    this.create = function () {
-      this.activity.loader(true);
-      scroll.render().find('.scroll__content').append(body);
-      play(f.movie_id, {}).then(function (p) {
-        st.p = p;
-        var voices = p.voices || [];
-        st.voice = Lampa.Storage.get('uakino_voice_' + f.movie_id, '') || voices[0] || null;
-        if (voices.indexOf(st.voice) < 0) st.voice = voices[0] || null;
-        var eps = (p.episodes || []).filter(function (e) {
-          return (e.voice || null) === (st.voice || null) && e.episode != null;
-        });
-        if (!eps.length && p.episodes && p.episodes.length) {
-          st.voice = p.episodes[0].voice || null;
-          eps = p.episodes.filter(function (e) { return e.episode != null; });
-        }
-        var seasons = eps.map(function (e) { return e.season; })
-          .filter(function (s, i, a) { return a.indexOf(s) === i; })
-          .sort(function (a, b) { return a - b; });
-        if (!seasons.length) seasons = [1];
-        st.season = seasons[0];
-        renderAll(voices, seasons);
-        self.activity.loader(false);
-        self.activity.toggle();
-      }).catch(function (e) {
-        body.append('<div class="uak-sub">Помилка: ' + (e && e.message || 'немає даних') + '</div>');
-        self.activity.loader(false);
-        self.activity.toggle();
-      });
-    };
-
-    function renderAll(voices, seasons) {
-      body.empty();
-      body.append('<div class="uak-head">' + (movie.title || movie.name || 'Серіал') + '</div>');
-      body.append('<div class="uak-sub">UAKino · оберіть озвучку, сезон і серію</div>');
-
-      if (voices && voices.length) {
-        var rowV = $('<div class="uak-row"></div>');
-        voices.forEach(function (v) {
-          var ch = $('<div class="uak-chip selector' + (v === st.voice ? ' uak-chip--on' : '') + '">' + v + '</div>');
-          ch.on('hover:enter', function () {
-            st.voice = v;
-            Lampa.Storage.set('uakino_voice_' + f.movie_id, v);
-            var eps = (st.p.episodes || []).filter(function (e) {
-              return (e.voice || null) === (v || null) && e.episode != null;
-            });
-            var ss = eps.map(function (e) { return e.season; })
-              .filter(function (s, i, a) { return a.indexOf(s) === i; })
-              .sort(function (a, b) { return a - b; });
-            if (!ss.length) ss = seasons;
-            st.season = ss[0] || 1;
-            renderAll(voices, ss);
-          });
-          rowV.append(ch);
-        });
-        body.append(rowV);
-      }
-
-      var rowS = $('<div class="uak-row"></div>');
-      seasons.forEach(function (s) {
-        var ch = $('<div class="uak-chip selector' + (s === st.season ? ' uak-chip--on' : '') + '">Сезон ' + s + '</div>');
-        ch.on('hover:enter', function () {
-          st.season = s;
-          renderAll(voices, seasons);
-        });
-        rowS.append(ch);
-      });
-      body.append(rowS);
-
-      var list = $('<div class="uak-eps" style="padding:.5em 1em 2em"></div>');
-      var eps = (st.p.episodes || []).filter(function (e) {
-        return e.season === st.season && e.episode != null &&
-          ((e.voice || null) === (st.voice || null) || !(st.p.voices || []).length);
-      });
-      eps.sort(function (a, b) { return a.episode - b.episode; });
-
-      if (!eps.length) {
-        list.append('<div class="uak-sub">Немає серій для цієї озвучки/сезону</div>');
-      } else {
-        eps.forEach(function (ep) {
-          var view = timeline(movie, ep.season, ep.episode);
-          var img = ep.scene || ep.poster || '';
-          if (img && !/^https?:/i.test(img)) img = API + img;
-          var el = $('<div class="uak-ep selector">' +
-            '<div class="uak-ep__img"' + (img ? ' style="background-image:url(' + img + ')"' : '') + '></div>' +
-            '<div><div class="uak-ep__t">Серія ' + ep.episode + mark(view) + '</div>' +
-            '<div class="uak-ep__s">' + (ep.title || ep.name || '') +
-            (ep.air_date ? ' · ' + ep.air_date : '') + '</div></div></div>');
-          el.on('hover:enter', function () {
-            Lampa.Loading.start(function () { Lampa.Loading.stop(); });
-            play(f.movie_id, {
-              voice: st.voice, season: ep.season, episode: ep.episode
-            }).then(function (pp) {
-              return variants(m3u8(pp.manifest_abs || (API + pp.manifest))).then(function (vv) {
-                Lampa.Loading.stop();
-                chooseQuality(movie, f, pp, vv, ep.season, ep.episode, st.voice);
-              });
-            }).catch(function (e) {
-              Lampa.Loading.stop();
-              Lampa.Noty.show('UAKino: ' + (e && e.message || 'помилка'));
-            });
-          });
-          list.append(el);
-        });
-      }
-      body.append(list);
-      try {
-        Lampa.Controller.collectionSet(scroll.render());
-        Lampa.Controller.collectionFocus(body.find('.selector').first()[0], scroll.render());
-      } catch (e) {}
-    }
-
-    this.start = function () {
-      Lampa.Controller.add('content', {
-        toggle: function () {
-          Lampa.Controller.collectionSet(scroll.render());
-          Lampa.Controller.collectionFocus(false, scroll.render());
-        },
-        left: function () { if (Navigator.canmove('left')) Navigator.move('left'); else Lampa.Controller.toggle('menu'); },
-        right: function () { Navigator.move('right'); },
-        up: function () { if (Navigator.canmove('up')) Navigator.move('up'); else Lampa.Controller.toggle('head'); },
-        down: function () { Navigator.move('down'); },
-        back: function () { Lampa.Activity.backward(); }
-      });
-      Lampa.Controller.toggle('content');
-    };
-    this.pause = function () {};
-    this.stop = function () {};
-    this.render = function () { return scroll.render(); };
-    this.destroy = function () { try { scroll.destroy(); } catch (e) {} };
-  }
-
-  // ─── кнопка на картці ───
-  function open(movie) {
-    Lampa.Loading.start(function () { Lampa.Loading.stop(); });
-    find(movie).then(function (f) {
-      if (!f || !f.found) {
-        Lampa.Loading.stop();
-        Lampa.Noty.show('UAKino: не знайдено');
-        return;
-      }
-      var isSerial = !!(movie.name || movie.number_of_seasons || movie.first_air_date || f.is_series);
-      if (isSerial) {
-        Lampa.Loading.stop();
-        Lampa.Activity.push({
-          url: '',
-          title: movie.title || movie.name || 'UAKino',
-          component: 'uakino_series_lite',
-          movie: movie,
-          uak_find: f
-        });
-        return;
-      }
-      return play(f.movie_id, {}).then(function (p) {
-        return variants(m3u8(p.manifest_abs || (API + p.manifest))).then(function (vars) {
-          Lampa.Loading.stop();
-          chooseQuality(movie, f, p, vars, null, null, null);
-        });
-      });
-    }).catch(function (e) {
-      Lampa.Loading.stop();
-      Lampa.Noty.show('UAKino: ' + (e && e.message || 'немає звʼязку'));
-    });
-  }
-
-  function addButton(e) {
-    try {
-      var render = e.object.activity.render();
-      if (render.find('.view--uakino-lite').length) return;
       var movie = e.data.movie;
       if (!movie) return;
+
       var btn = $('<div class="full-start__button selector view--uakino-lite" data-subtitle="uakino.ax">' +
-        ICON + '<span>UAKino</span></div>');
-      btn.on('hover:enter', function () { open(movie); });
+        logoImg('width:1.4em;height:1.4em;object-fit:contain;margin-right:.35em;vertical-align:middle') +
+        '<span>UAKino</span></div>');
+
+      btn.on('hover:enter', function () {
+        if (isSerial(movie)) openSeries(movie);
+        else openFilm(movie);
+      });
+
       var anchor = render.find('.view--torrent, .view--online, .button--play').first();
       if (anchor.length) anchor.after(btn);
       else render.find('.full-start-new__buttons, .full-start__buttons').first().append(btn);
@@ -712,16 +503,41 @@
     }
   }
 
+  function addSideMenu() {
+    try {
+      if ($('.menu .menu__item[data-uak="lite"]').length) return;
+      var item = $(
+        '<li class="menu__item selector" data-uak="lite">' +
+          '<div class="menu__ico">' + logoImg('width:1.5em;height:1.5em;object-fit:contain;display:block') + '</div>' +
+          '<div class="menu__text">UAKino</div>' +
+        '</li>'
+      );
+      item.on('hover:enter', function () {
+        try {
+          Lampa.Activity.push({ url: '', title: 'Пошук', component: 'search' });
+        } catch (e) {
+          Lampa.Noty.show('UAKino: відкрийте фільм і натисніть кнопку UAKino');
+        }
+      });
+      var list = $('.menu .menu__list').eq(0);
+      if (list.length) list.prepend(item);
+    } catch (e) {
+      console.log('uakino menu', e);
+    }
+  }
+
   function ready() {
     injectTheme();
     brandHead();
+    addSideMenu();
     try {
       if (window.MutationObserver) {
-        new MutationObserver(function () { brandHead(); })
-          .observe(document.body, { childList: true, subtree: true });
+        new MutationObserver(function () {
+          brandHead();
+          addSideMenu();
+        }).observe(document.body, { childList: true, subtree: true });
       }
     } catch (e) {}
-
     Lampa.Component.add('uakino_series_lite', SeriesPage);
     Lampa.Listener.follow('full', function (e) {
       if (e.type === 'complite') {
