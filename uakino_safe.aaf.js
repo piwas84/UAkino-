@@ -1,4 +1,4 @@
-/* UAKino Safe for Lampa * Official plugin without breaking CUB menu + UA flag on button like UAFX */
+/* UAKino Safe — CUB/меню цілі + прапор на кнопці як у UAFX */
 (function () {
   "use strict";
   if (window.uakino_safe_loader) return;
@@ -7,52 +7,68 @@
   window.UAK_NATIVE_MENU = true;
   window.UAK_NATIVE_HERO = true;
 
-  function addFlag() {
+  var FLAG = " \uD83C\uDDFA\uD83C\uDDE6"; // 🇺🇦
+
+  function injectCss() {
+    if (document.getElementById("uakino-flag-css")) return;
+    var st = document.createElement("style");
+    st.id = "uakino-flag-css";
+    st.textContent = [
+      ".view--uakino span::after,",
+      ".view--uakino-lite span::after {",
+      ' content: "' + FLAG + '";',
+      "}",
+    ].join("");
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  function patchButtons(root) {
     try {
-      document
-        .querySelectorAll(
-          ".view--uakino, .view--uakino-lite, .full-start__button"
-        )
-        .forEach(function (btn) {
-          var t = (btn.textContent || "").replace(/\s+/g, " ").trim();
-          if (!/uakino/i.test(t)) return;
-          if (/ðŸ‡ºðŸ‡¦/.test(t)) return;
-          var span = btn.querySelector("span");
-          if (span) {
-            var st = span.textContent.trim();
-            if (/uakino/i.test(st) && st.indexOf("ðŸ‡ºðŸ‡¦") < 0) {
-              span.textContent = st.replace(/uakino/i, "UAKino") + " ðŸ‡ºðŸ‡¦";
-            }
-          } else if (t.indexOf("ðŸ‡ºðŸ‡¦") < 0) {
-            btn.appendChild(document.createTextNode(" ðŸ‡ºðŸ‡¦"));
-          }
-        });
+      var scope = root && root.querySelectorAll ? root : document;
+      var list = scope.querySelectorAll(
+        ".view--uakino, .view--uakino-lite, .full-start__button"
+      );
+      for (var i = 0; i < list.length; i++) {
+        var btn = list[i];
+        var span = btn.querySelector("span");
+        if (!span) continue;
+        var t = (span.textContent || "").trim();
+        if (!/uakino/i.test(t)) continue;
+        if (t.indexOf("\uD83C\uDDFA") >= 0) continue;
+        span.textContent = "UAKino" + FLAG;
+      }
     } catch (e) {}
+  }
+
+  function wire() {
+    injectCss();
+    patchButtons(document);
+    if (!(window.Lampa && Lampa.Listener)) return;
+    Lampa.Listener.follow("full", function (e) {
+      if (e.type !== "complite") return;
+      setTimeout(function () {
+        injectCss();
+        try {
+          var el = e.object.activity.render();
+          patchButtons(el && el[0] ? el[0] : document);
+        } catch (err) {
+          patchButtons(document);
+        }
+      }, 300);
+    });
   }
 
   var s = document.createElement("script");
   s.src = "https://uakino.ax/lampa.js";
   s.async = true;
   s.onload = function () {
-    addFlag();
-    setTimeout(addFlag, 800);
-    setTimeout(addFlag, 2500);
-    try {
-      if (window.MutationObserver) {
-        new MutationObserver(function () {
-          addFlag();
-        }).observe(document.body, { childList: true, subtree: true });
-      }
-    } catch (e) {}
-  };
-  s.onerror = function () {
-    try {
-      if (window.Lampa && Lampa.Noty) {
-        Lampa.Noty.show(
-          "UAKino: Ð½Ðµ Ð²Ð´Ð°Ð»Ð¾ÑÑ Ð·Ð°Ð²Ð°Ð½Ñ‚Ð°Ð¶Ð¸Ñ‚Ð¸ uakino.ax/lampa.js"
-        );
-      }
-    } catch (e) {}
+    if (window.appready) wire();
+    else if (window.Lampa && Lampa.Listener) {
+      Lampa.Listener.follow("app", function (e) {
+        if (e.type === "ready") wire();
+      });
+    }
+    setTimeout(wire, 2000);
   };
   (document.head || document.documentElement).appendChild(s);
 })();
